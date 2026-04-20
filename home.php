@@ -80,128 +80,79 @@ $hero_sides = array_slice( $hero_posts, 1, 3 );
 <!-- ===================================================
      CATEGORY SECTIONS
      =================================================== -->
-<div class="content-sections">
+<?php
+$homepage_cats = array(
+	array( 'name' => 'Branding',            'color' => '#c0392b' ),
+	array( 'name' => 'Advertising',         'color' => '#1565c0' ),
+	array( 'name' => 'Consumer Behaviour',  'color' => '#6a1b9a' ),
+	array( 'name' => 'Pricing',             'color' => '#2e7d32' ),
+	array( 'name' => 'Promotions',          'color' => '#e65100' ),
+	array( 'name' => 'Category Management', 'color' => '#00838f' ),
+);
+
+$section_index = 0;
+?>
+<div class="homepage-categories">
+<?php foreach ( $homepage_cats as $cat_config ) :
+	$cat = get_category_by_slug( sanitize_title( $cat_config['name'] ) );
+	if ( ! $cat ) {
+		$found = get_terms( array(
+			'taxonomy'   => 'category',
+			'name'       => $cat_config['name'],
+			'hide_empty' => false,
+			'number'     => 1,
+		) );
+		$cat = ( ! empty( $found ) && ! is_wp_error( $found ) ) ? $found[0] : null;
+	}
+	if ( ! $cat ) continue;
+
+	$cat_query = new WP_Query( array(
+		'post_type'           => 'post',
+		'post_status'         => 'publish',
+		'posts_per_page'      => 3,
+		'cat'                 => $cat->term_id,
+		'orderby'             => 'date',
+		'order'               => 'DESC',
+		'ignore_sticky_posts' => 1,
+	) );
+
+	if ( ! $cat_query->have_posts() ) continue;
+	$section_index++;
+?>
+<section class="cat-section<?php echo $section_index % 2 === 0 ? ' cat-section--alt' : ''; ?>"
+         style="--cat-color: <?php echo esc_attr( $cat_config['color'] ); ?>">
 	<div class="container">
-
-		<?php
-		$featured_cats = array( 'Insights', 'Branding', 'Pricing' );
-
-		foreach ( $featured_cats as $cat_name ) :
-			$cat = get_category_by_slug( sanitize_title( $cat_name ) );
-			if ( ! $cat ) {
-				$cats_found = get_categories( array(
-					'name'       => $cat_name,
-					'hide_empty' => true,
-					'number'     => 1,
-				) );
-				$cat = ! empty( $cats_found ) ? $cats_found[0] : null;
-			}
-
-			if ( ! $cat ) continue;
-
-			$cat_posts = get_posts( array(
-				'numberposts' => 3,
-				'category'    => $cat->term_id,
-				'post_status' => 'publish',
-			) );
-
-			if ( empty( $cat_posts ) ) continue;
-		?>
-
-		<section class="content-section">
-			<div class="section-header">
-				<h2 class="section-title"><?php echo esc_html( $cat->name ); ?></h2>
-				<a href="<?php echo esc_url( get_category_link( $cat->term_id ) ); ?>" class="section-link">
-					<?php esc_html_e( 'View all', 'fmcg-theme' ); ?> &rarr;
-				</a>
-			</div>
-			<div class="grid-3">
-				<?php foreach ( $cat_posts as $post ) : setup_postdata( $post ); ?>
-				<article class="post-card">
-					<a href="<?php echo esc_url( get_permalink( $post ) ); ?>" class="post-card-image-link">
-						<div class="post-card-image">
-							<?php if ( has_post_thumbnail( $post ) ) : ?>
-								<?php echo get_the_post_thumbnail( $post, 'fmcg-card', array( 'alt' => esc_attr( get_the_title( $post ) ) ) ); ?>
-							<?php else : ?>
-								<div class="post-card-image-placeholder"><span>&#9679;</span></div>
-							<?php endif; ?>
-						</div>
-					</a>
-					<div class="post-card-body">
-						<?php
-						$pc = get_the_category( $post->ID );
-						if ( ! empty( $pc ) ) {
-							printf(
-								'<a href="%s" class="post-card-category">%s</a>',
-								esc_url( get_category_link( $pc[0]->term_id ) ),
-								esc_html( $pc[0]->name )
-							);
-						}
-						?>
-						<h3 class="post-card-title">
-							<a href="<?php echo esc_url( get_permalink( $post ) ); ?>"><?php echo esc_html( get_the_title( $post ) ); ?></a>
-						</h3>
-						<p class="post-card-excerpt"><?php echo esc_html( get_the_excerpt( $post ) ); ?></p>
-						<div class="post-card-meta">
-							<span class="author-name"><?php echo esc_html( get_the_author_meta( 'display_name', $post->post_author ) ); ?></span>
-							<span>&middot;</span>
-							<span><?php echo esc_html( get_the_date( 'd M Y', $post ) ); ?></span>
-						</div>
-					</div>
-				</article>
-				<?php endforeach; wp_reset_postdata(); ?>
-			</div>
-		</section>
-
-		<?php endforeach; ?>
-
-	</div>
-</div>
-
-<!-- ===================================================
-     LATEST POSTS GRID
-     =================================================== -->
-<section class="latest-posts-section">
-	<div class="container">
-		<div class="section-header">
-			<h2 class="section-title"><?php esc_html_e( 'Latest News', 'fmcg-theme' ); ?></h2>
+		<div class="cat-section-header">
+			<h2 class="cat-section-title"><?php echo esc_html( $cat->name ); ?></h2>
+			<a href="<?php echo esc_url( get_category_link( $cat->term_id ) ); ?>" class="cat-section-link">
+				<?php esc_html_e( 'View all', 'fmcg-theme' ); ?> &rarr;
+			</a>
 		</div>
-		<div class="grid-4">
-			<?php
-			$latest_query = new WP_Query( array(
-				'post_type'           => 'post',
-				'post_status'         => 'publish',
-				'posts_per_page'      => 6,
-				'post__not_in'        => wp_list_pluck( $hero_posts, 'ID' ),
-				'orderby'             => 'date',
-				'order'               => 'DESC',
-				'ignore_sticky_posts' => 1,
-			) );
-			while ( $latest_query->have_posts() ) : $latest_query->the_post();
-			?>
-			<article class="post-card">
-				<a href="<?php echo esc_url( get_permalink() ); ?>">
-					<div class="post-card-image">
-						<?php if ( has_post_thumbnail() ) : ?>
-							<?php echo get_the_post_thumbnail( null, 'fmcg-card', array( 'alt' => esc_attr( get_the_title() ) ) ); ?>
-						<?php else : ?>
-							<div class="post-card-image-placeholder"><span>&#9679;</span></div>
+		<div class="cat-grid">
+			<?php $card_n = 0; while ( $cat_query->have_posts() ) : $cat_query->the_post(); $card_n++; ?>
+			<article class="cat-card<?php echo $card_n === 1 ? ' cat-card--lead' : ' cat-card--side'; ?>">
+				<a href="<?php echo esc_url( get_permalink() ); ?>" class="cat-card-thumb-link">
+					<div class="cat-card-thumb">
+						<?php if ( has_post_thumbnail() ) :
+							the_post_thumbnail( 'fmcg-card', array( 'alt' => esc_attr( get_the_title() ) ) );
+						else : ?>
+							<div class="cat-card-no-image"></div>
 						<?php endif; ?>
 					</div>
 				</a>
-				<div class="post-card-body">
-					<?php fmcg_category_label(); ?>
-					<h3 class="post-card-title">
+				<div class="cat-card-body">
+					<h3 class="cat-card-title">
 						<a href="<?php echo esc_url( get_permalink() ); ?>"><?php echo esc_html( get_the_title() ); ?></a>
 					</h3>
-					<div class="post-card-meta">
-						<span><?php echo esc_html( get_the_date( 'd M Y' ) ); ?></span>
-					</div>
+					<p class="cat-card-excerpt"><?php echo esc_html( get_the_excerpt() ); ?></p>
+					<p class="cat-card-date"><?php echo esc_html( get_the_date( 'd M Y' ) ); ?></p>
 				</div>
 			</article>
 			<?php endwhile; wp_reset_postdata(); ?>
 		</div>
 	</div>
 </section>
+<?php endforeach; ?>
+</div>
 
 <?php get_footer(); ?>
