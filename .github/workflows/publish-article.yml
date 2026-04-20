@@ -1,0 +1,67 @@
+name: Publish Article to fmcg.ie
+
+on:
+  workflow_dispatch:
+    inputs:
+      article_script:
+        description: "Python script to run (relative to repo root)"
+        required: false
+        default: "publish-article.py"
+      dry_run:
+        description: "Dry run — validate credentials only, do not publish"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    name: Publish to WordPress
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate credentials
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          python3 - <<'EOF'
+          import os, urllib.request, urllib.error, base64, json, sys
+
+          url = os.environ["WP_URL"]
+          user = os.environ["WP_USERNAME"]
+          pwd  = os.environ["WP_APP_PASSWORD"]
+
+          creds = base64.b64encode(f"{user}:{pwd}".encode()).decode()
+          req = urllib.request.Request(
+              f"{url}/wp-json/wp/v2/users/me",
+              headers={"Authorization": f"Basic {creds}", "Accept": "application/json"}
+          )
+          try:
+              with urllib.request.urlopen(req) as r:
+                  data = json.loads(r.read().decode())
+                  print(f"Authenticated as: {data.get('name', user)} (ID {data.get('id')})")
+          except urllib.error.HTTPError as e:
+              print(f"Auth failed — HTTP {e.code}: {e.read().decode()[:200]}", file=sys.stderr)
+              sys.exit(1)
+          EOF
+
+      - name: Publish article
+        if: ${{ !inputs.dry_run }}
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: python3 ${{ inputs.article_script }}
+
+      - name: Dry run complete
+        if: ${{ inputs.dry_run }}
+        run: echo "Dry run complete — credentials validated, no article published."
