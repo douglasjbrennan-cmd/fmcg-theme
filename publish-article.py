@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """
 Publish an article to fmcg.ie via the WordPress REST API.
-Run this script from your local machine (where your IP is permitted).
+
+Credentials are read from environment variables:
+    WP_URL          WordPress site URL (default: https://fmcg.ie)
+    WP_USERNAME     WordPress username
+    WP_APP_PASSWORD WordPress application password
 
 Usage:
     python3 publish-article.py
 """
 
+import os
 import urllib.request
 import urllib.error
 import json
 import base64
 import sys
 
-WP_URL = "https://fmcg.ie"
-USERNAME = "admin"
-APP_PASSWORD = "r8Tn 5YNU aqgR Xjde F5AL hqPL"
+WP_URL = os.environ.get("WP_URL", "https://fmcg.ie")
+USERNAME = os.environ.get("WP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("WP_APP_PASSWORD", "")
 
 ARTICLE_TITLE = "The Rise of Private Label Brands in Irish Supermarkets"
 
@@ -133,6 +138,9 @@ def publish():
 
 
 if __name__ == "__main__":
+    if not APP_PASSWORD:
+        print("Error: WP_APP_PASSWORD environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
     try:
         publish()
     except urllib.error.HTTPError as e:
