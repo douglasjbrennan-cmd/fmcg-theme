@@ -110,14 +110,57 @@ function fmcg_publisher_poll(): void {
             continue;
         }
 
+        // Attach featured image if the queue entry includes one
+        $image_url = $article['featured_image_url'] ?? '';
+        if ( $image_url ) {
+            fmcg_publisher_attach_featured_image( $post_id, $article );
+        }
+
         $published_ids[] = $id;
         update_option( FMCG_PUBLISHER_OPT_IDS, $published_ids );
 
-        $log['published'][] = [ 'id' => $id, 'post_id' => $post_id, 'title' => $title ];
-        error_log( "FMCG Publisher: published '$title' (post ID $post_id)" );
+        $log['published'][] = [ 'id' => $id, 'post_id' => $post_id, 'title' => $title, 'has_image' => (bool) $image_url ];
+        error_log( "FMCG Publisher: published '$title' (post ID $post_id)" . ( $image_url ? ' with featured image' : '' ) );
     }
 
     update_option( FMCG_PUBLISHER_OPT_LOG, $log );
+}
+
+function fmcg_publisher_attach_featured_image( int $post_id, array $article ): void {
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+
+    $url        = esc_url_raw( $article['featured_image_url'] );
+    $alt        = sanitize_text_field( $article['featured_image_alt'] ?? '' );
+    $credit     = sanitize_text_field( $article['featured_image_credit'] ?? '' );
+    $credit_url = esc_url_raw( $article['featured_image_credit_url'] ?? '' );
+
+    // Description shown in the media library — include Unsplash attribution
+    $description = $credit ?: $alt;
+
+    $attachment_id = media_sideload_image( $url, $post_id, $description, 'id' );
+
+    if ( is_wp_error( $attachment_id ) ) {
+        error_log( "FMCG Publisher: could not sideload image for post $post_id — " . $attachment_id->get_error_message() );
+        return;
+    }
+
+    // Alt text
+    if ( $alt ) {
+        update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
+    }
+
+    // Caption with linked Unsplash attribution (satisfies Unsplash API guidelines)
+    if ( $credit ) {
+        $caption = $credit_url
+            ? sprintf( '<a href="%s" rel="nofollow noopener" target="_blank">%s</a>', esc_url( $credit_url ), esc_html( $credit ) )
+            : esc_html( $credit );
+        wp_update_post( [ 'ID' => $attachment_id, 'post_excerpt' => $caption ] );
+    }
+
+    set_post_thumbnail( $post_id, $attachment_id );
+    error_log( "FMCG Publisher: set featured image attachment $attachment_id for post $post_id" );
 }
 
 function fmcg_publisher_get_or_create_category( string $slug, string $name ): int {
@@ -192,7 +235,11 @@ function fmcg_publisher_admin_page(): void {
                 <h3>Published this poll</h3>
                 <ul>
                     <?php foreach ( $log['published'] as $p ) : ?>
-                        <li><?php echo esc_html( $p['title'] ); ?> &mdash; <a href="<?php echo esc_url( get_permalink( $p['post_id'] ) ); ?>" target="_blank">View post</a></li>
+                        <li>
+                            <?php echo esc_html( $p['title'] ); ?>
+                            <?php echo empty( $p['has_image'] ) ? '' : ' 🖼️'; ?>
+                            &mdash; <a href="<?php echo esc_url( get_permalink( $p['post_id'] ) ); ?>" target="_blank">View post</a>
+                        </li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>

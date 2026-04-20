@@ -1,8 +1,12 @@
 name: Queue Article for Publishing
 
-# Adds a new article entry to articles/queue.json.
+# Adds a new article entry to articles/queue.json, including a featured
+# image sourced automatically from Unsplash based on the article title.
 # The FMCG Article Publisher WordPress plugin polls that file hourly and
-# publishes any pending entries automatically — no inbound access to WordPress needed.
+# publishes any pending entries — no inbound access to WordPress needed.
+#
+# Required secret:  UNSPLASH_ACCESS_KEY  (https://unsplash.com/developers)
+# Optional secret:  UNSPLASH_ACCESS_KEY  — if absent, article is queued without a featured image
 
 on:
   workflow_dispatch:
@@ -28,6 +32,10 @@ on:
       content:
         description: "Full article HTML/block content"
         required: true
+      unsplash_query:
+        description: "Unsplash search query override (defaults to article title)"
+        required: false
+        default: ""
 
 jobs:
   queue:
@@ -42,51 +50,104 @@ jobs:
 
       - name: Validate article ID is not already queued
         run: |
-          ID="${{ inputs.article_id }}"
-          if python3 -c "
-          import json, sys
-          queue = json.load(open('articles/queue.json'))
-          ids = [a['id'] for a in queue]
-          if '$ID' in ids:
-              print(f'ERROR: article ID \"$ID\" already exists in queue.json')
-              sys.exit(1)
-          print(f'ID \"$ID\" is new — OK to add')
-          "; then
-            echo "Validation passed"
-          else
-            exit 1
-          fi
-
-      - name: Append article to queue.json
-        run: |
           python3 - <<'PYEOF'
-          import json, os
-
-          with open('articles/queue.json', 'r') as f:
+          import json, sys
+          with open('articles/queue.json') as f:
               queue = json.load(f)
-
-          queue.append({
-              "id":            os.environ["ARTICLE_ID"],
-              "status":        "pending",
-              "title":         os.environ["TITLE"],
-              "excerpt":       os.environ["EXCERPT"],
-              "category_slug": os.environ["CATEGORY_SLUG"],
-              "category_name": os.environ["CATEGORY_NAME"],
-              "content":       os.environ["CONTENT"],
-          })
-
-          with open('articles/queue.json', 'w') as f:
-              json.dump(queue, f, indent=2, ensure_ascii=False)
-
-          print(f"Added '{os.environ['TITLE']}' to queue.json ({len(queue)} total entries)")
+          existing = [a['id'] for a in queue]
+          article_id = "${{ inputs.article_id }}"
+          if article_id in existing:
+              print(f"ERROR: article ID '{article_id}' already exists in queue.json")
+              sys.exit(1)
+          print(f"ID '{article_id}' is new — OK to add")
           PYEOF
+
+      - name: Search Unsplash and append article to queue.json
         env:
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           ARTICLE_ID:    ${{ inputs.article_id }}
           TITLE:         ${{ inputs.title }}
           EXCERPT:       ${{ inputs.excerpt }}
           CATEGORY_SLUG: ${{ inputs.category_slug }}
           CATEGORY_NAME: ${{ inputs.category_name }}
           CONTENT:       ${{ inputs.content }}
+          UNSPLASH_QUERY: ${{ inputs.unsplash_query }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, urllib.request, urllib.parse, urllib.error
+
+          def search_unsplash(query, access_key):
+              """Return image metadata dict, or {} if unavailable."""
+              if not access_key:
+                  print("UNSPLASH_ACCESS_KEY not set — article will publish without a featured image")
+                  return {}
+              params = urllib.parse.urlencode({
+                  "query":       query,
+                  "per_page":    1,
+                  "orientation": "landscape",
+              })
+              req = urllib.request.Request(
+                  f"https://api.unsplash.com/search/photos?{params}",
+                  headers={"Authorization": f"Client-ID {access_key}", "Accept-Version": "v1"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      data = json.loads(r.read().decode())
+              except urllib.error.HTTPError as e:
+                  print(f"Unsplash API error {e.code}: {e.read().decode()[:200]} — skipping featured image")
+                  return {}
+              except Exception as e:
+                  print(f"Unsplash search failed: {e} — skipping featured image")
+                  return {}
+
+              results = data.get("results", [])
+              if not results:
+                  print(f"No Unsplash results for '{query}' — skipping featured image")
+                  return {}
+
+              photo = results[0]
+              # Append UTM params as required by Unsplash API guidelines
+              utm = "?utm_source=fmcg_publisher&utm_medium=referral"
+              return {
+                  "featured_image_url":        photo["urls"]["regular"],
+                  "featured_image_alt":        photo.get("alt_description") or query,
+                  "featured_image_credit":     f"Photo by {photo['user']['name']} on Unsplash",
+                  "featured_image_credit_url": photo["links"]["html"] + utm,
+              }
+
+          title       = os.environ["TITLE"]
+          query       = os.environ.get("UNSPLASH_QUERY") or title
+          access_key  = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+
+          print(f"Searching Unsplash for: '{query}'")
+          image_meta = search_unsplash(query, access_key)
+          if image_meta:
+              print(f"  Found: {image_meta['featured_image_url']}")
+              print(f"  Credit: {image_meta['featured_image_credit']}")
+          else:
+              print("  No featured image — article will be published without one")
+
+          entry = {
+              "id":            os.environ["ARTICLE_ID"],
+              "status":        "pending",
+              "title":         title,
+              "excerpt":       os.environ.get("EXCERPT", ""),
+              "category_slug": os.environ["CATEGORY_SLUG"],
+              "category_name": os.environ["CATEGORY_NAME"],
+              "content":       os.environ["CONTENT"],
+              **image_meta,
+          }
+
+          with open("articles/queue.json") as f:
+              queue = json.load(f)
+
+          queue.append(entry)
+
+          with open("articles/queue.json", "w") as f:
+              json.dump(queue, f, indent=2, ensure_ascii=False)
+
+          print(f"\nQueued '{title}' ({os.environ['ARTICLE_ID']}) — {len(queue)} total entries in queue.json")
+          PYEOF
 
       - name: Commit and push updated queue
         run: |
