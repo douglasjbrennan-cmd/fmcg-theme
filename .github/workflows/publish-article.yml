@@ -1,67 +1,97 @@
-name: Publish Article to fmcg.ie
+name: Queue Article for Publishing
+
+# Adds a new article entry to articles/queue.json.
+# The FMCG Article Publisher WordPress plugin polls that file hourly and
+# publishes any pending entries automatically — no inbound access to WordPress needed.
 
 on:
   workflow_dispatch:
     inputs:
-      article_script:
-        description: "Python script to run (relative to repo root)"
+      article_id:
+        description: "Unique slug for the article (e.g. my-article-title)"
+        required: true
+      title:
+        description: "Article title"
+        required: true
+      category_slug:
+        description: "Category slug (e.g. branding)"
+        required: true
+        default: "uncategorized"
+      category_name:
+        description: "Category display name (e.g. Branding)"
+        required: true
+        default: "Uncategorized"
+      excerpt:
+        description: "Short excerpt (optional)"
         required: false
-        default: "publish-article.py"
-      dry_run:
-        description: "Dry run — validate credentials only, do not publish"
-        required: false
-        type: boolean
-        default: false
+        default: ""
+      content:
+        description: "Full article HTML/block content"
+        required: true
 
 jobs:
-  publish:
-    name: Publish to WordPress
+  queue:
+    name: Add article to queue
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Validate credentials
-        env:
-          WP_URL: ${{ secrets.WP_URL }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+      - name: Validate article ID is not already queued
         run: |
-          python3 - <<'EOF'
-          import os, urllib.request, urllib.error, base64, json, sys
-
-          url = os.environ["WP_URL"]
-          user = os.environ["WP_USERNAME"]
-          pwd  = os.environ["WP_APP_PASSWORD"]
-
-          creds = base64.b64encode(f"{user}:{pwd}".encode()).decode()
-          req = urllib.request.Request(
-              f"{url}/wp-json/wp/v2/users/me",
-              headers={"Authorization": f"Basic {creds}", "Accept": "application/json"}
-          )
-          try:
-              with urllib.request.urlopen(req) as r:
-                  data = json.loads(r.read().decode())
-                  print(f"Authenticated as: {data.get('name', user)} (ID {data.get('id')})")
-          except urllib.error.HTTPError as e:
-              print(f"Auth failed — HTTP {e.code}: {e.read().decode()[:200]}", file=sys.stderr)
+          ID="${{ inputs.article_id }}"
+          if python3 -c "
+          import json, sys
+          queue = json.load(open('articles/queue.json'))
+          ids = [a['id'] for a in queue]
+          if '$ID' in ids:
+              print(f'ERROR: article ID \"$ID\" already exists in queue.json')
               sys.exit(1)
-          EOF
+          print(f'ID \"$ID\" is new — OK to add')
+          "; then
+            echo "Validation passed"
+          else
+            exit 1
+          fi
 
-      - name: Publish article
-        if: ${{ !inputs.dry_run }}
+      - name: Append article to queue.json
+        run: |
+          python3 - <<'PYEOF'
+          import json, os
+
+          with open('articles/queue.json', 'r') as f:
+              queue = json.load(f)
+
+          queue.append({
+              "id":            os.environ["ARTICLE_ID"],
+              "status":        "pending",
+              "title":         os.environ["TITLE"],
+              "excerpt":       os.environ["EXCERPT"],
+              "category_slug": os.environ["CATEGORY_SLUG"],
+              "category_name": os.environ["CATEGORY_NAME"],
+              "content":       os.environ["CONTENT"],
+          })
+
+          with open('articles/queue.json', 'w') as f:
+              json.dump(queue, f, indent=2, ensure_ascii=False)
+
+          print(f"Added '{os.environ['TITLE']}' to queue.json ({len(queue)} total entries)")
+          PYEOF
         env:
-          WP_URL: ${{ secrets.WP_URL }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-        run: python3 ${{ inputs.article_script }}
+          ARTICLE_ID:    ${{ inputs.article_id }}
+          TITLE:         ${{ inputs.title }}
+          EXCERPT:       ${{ inputs.excerpt }}
+          CATEGORY_SLUG: ${{ inputs.category_slug }}
+          CATEGORY_NAME: ${{ inputs.category_name }}
+          CONTENT:       ${{ inputs.content }}
 
-      - name: Dry run complete
-        if: ${{ inputs.dry_run }}
-        run: echo "Dry run complete — credentials validated, no article published."
+      - name: Commit and push updated queue
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add articles/queue.json
+          git commit -m "Queue article: ${{ inputs.title }}"
+          git push

@@ -18,7 +18,7 @@ import json
 import base64
 import sys
 
-WP_URL = os.environ.get("WP_URL", "https://fmcg.ie")
+WP_URL = os.environ.get("WP_URL", "https://fmcg.ie").rstrip("/")
 USERNAME = os.environ.get("WP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("WP_APP_PASSWORD", "")
 
@@ -82,15 +82,23 @@ def get_auth_header():
     return {"Authorization": f"Basic {creds}"}
 
 
+def api_url(path):
+    # Use ?rest_route= fallback format, merging any path query params as &param=value
+    if "?" in path:
+        route, qs = path.split("?", 1)
+        return f"{WP_URL}/?rest_route=/wp/v2{route}&{qs}"
+    return f"{WP_URL}/?rest_route=/wp/v2{path}"
+
+
 def api_get(path):
-    url = f"{WP_URL}/wp-json/wp/v2{path}"
+    url = api_url(path)
     req = urllib.request.Request(url, headers={**get_auth_header(), "Accept": "application/json"})
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read().decode())
 
 
 def api_post(path, payload):
-    url = f"{WP_URL}/wp-json/wp/v2{path}"
+    url = api_url(path)
     data = json.dumps(payload).encode()
     req = urllib.request.Request(
         url,
