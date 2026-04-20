@@ -42,7 +42,7 @@ jobs:
 
           creds = base64.b64encode(f"{user}:{pwd}".encode()).decode()
           req = urllib.request.Request(
-              f"{url}/wp-json/wp/v2/users/me",
+              f"{url}/?rest_route=/wp/v2/users/me",
               headers={"Authorization": f"Basic {creds}", "Accept": "application/json"}
           )
           try:
