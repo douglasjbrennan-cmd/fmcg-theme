@@ -36,7 +36,7 @@ $hero_sides = array_slice( $hero_posts, 1, 3 );
 						$cats = get_the_category( $hero_main->ID );
 						if ( ! empty( $cats ) ) :
 							?>
-							<a href="<?php echo esc_url( get_category_link( $cats[0]->term_id ) ); ?>" class="hero-category"><?php echo esc_html( $cats[0]->name ); ?></a>
+							<span class="hero-category"><?php echo esc_html( $cats[0]->name ); ?></span>
 						<?php endif; ?>
 						<h1 class="hero-title"><?php echo esc_html( get_the_title( $hero_main ) ); ?></h1>
 						<p class="hero-excerpt"><?php echo esc_html( get_the_excerpt( $hero_main ) ); ?></p>
@@ -171,6 +171,8 @@ $hero_sides = array_slice( $hero_posts, 1, 3 );
 			$latest = get_posts( array(
 				'numberposts' => 6,
 				'post_status' => 'publish',
+				'orderby'     => 'date',
+				'order'       => 'DESC',
 				'offset'      => 4,
 			) );
 			foreach ( $latest as $post ) :
