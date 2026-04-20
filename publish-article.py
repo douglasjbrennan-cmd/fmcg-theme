@@ -18,7 +18,7 @@ import json
 import base64
 import sys
 
-WP_URL = os.environ.get("WP_URL", "https://fmcg.ie")
+WP_URL = os.environ.get("WP_URL", "https://fmcg.ie").rstrip("/")
 USERNAME = os.environ.get("WP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("WP_APP_PASSWORD", "")
 

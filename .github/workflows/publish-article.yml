@@ -36,7 +36,7 @@ jobs:
           python3 - <<'EOF'
           import os, urllib.request, urllib.error, base64, json, sys
 
-          url = os.environ["WP_URL"]
+          url = os.environ["WP_URL"].rstrip("/")
           user = os.environ["WP_USERNAME"]
           pwd  = os.environ["WP_APP_PASSWORD"]
 
