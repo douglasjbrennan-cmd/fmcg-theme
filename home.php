@@ -168,21 +168,22 @@ $hero_sides = array_slice( $hero_posts, 1, 3 );
 		</div>
 		<div class="grid-4">
 			<?php
-			$latest = get_posts( array(
-				'numberposts' => 6,
-				'post_status' => 'publish',
-				'orderby'     => 'date',
-				'order'       => 'DESC',
-				'offset'      => 4,
+			$latest_query = new WP_Query( array(
+				'post_type'           => 'post',
+				'post_status'         => 'publish',
+				'posts_per_page'      => 6,
+				'offset'              => 4,
+				'orderby'             => 'date',
+				'order'               => 'DESC',
+				'ignore_sticky_posts' => 1,
 			) );
-			foreach ( $latest as $post ) :
-				setup_postdata( $post );
+			while ( $latest_query->have_posts() ) : $latest_query->the_post();
 			?>
 			<article class="post-card">
-				<a href="<?php echo esc_url( get_permalink( $post ) ); ?>">
+				<a href="<?php echo esc_url( get_permalink() ); ?>">
 					<div class="post-card-image">
-						<?php if ( has_post_thumbnail( $post ) ) : ?>
-							<?php echo get_the_post_thumbnail( $post, 'fmcg-card', array( 'alt' => esc_attr( get_the_title( $post ) ) ) ); ?>
+						<?php if ( has_post_thumbnail() ) : ?>
+							<?php echo get_the_post_thumbnail( null, 'fmcg-card', array( 'alt' => esc_attr( get_the_title() ) ) ); ?>
 						<?php else : ?>
 							<div class="post-card-image-placeholder"><span>&#9679;</span></div>
 						<?php endif; ?>
@@ -191,14 +192,14 @@ $hero_sides = array_slice( $hero_posts, 1, 3 );
 				<div class="post-card-body">
 					<?php fmcg_category_label(); ?>
 					<h3 class="post-card-title">
-						<a href="<?php echo esc_url( get_permalink( $post ) ); ?>"><?php echo esc_html( get_the_title( $post ) ); ?></a>
+						<a href="<?php echo esc_url( get_permalink() ); ?>"><?php echo esc_html( get_the_title() ); ?></a>
 					</h3>
 					<div class="post-card-meta">
-						<span><?php echo esc_html( get_the_date( 'd M Y', $post ) ); ?></span>
+						<span><?php echo esc_html( get_the_date( 'd M Y' ) ); ?></span>
 					</div>
 				</div>
 			</article>
-			<?php endforeach; wp_reset_postdata(); ?>
+			<?php endwhile; wp_reset_postdata(); ?>
 		</div>
 	</div>
 </section>
